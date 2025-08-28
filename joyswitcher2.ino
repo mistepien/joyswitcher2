@@ -6,18 +6,18 @@
 //ATtiny 2313 DO NOT work with 128kHz.
 
 
-/*---------------------------------------------------
-  |   DDRx   |   PORTx  |    result                 |
-  --------------------------------------------------|
-  --------------------------------------------------|
-  |    0     |     0    |  INPUT / Tri-state (hi-Z) |
-  ---------------------------------------------------
-  |    0     |     1    |  INPUT_PULLUP             |
-  ---------------------------------------------------
-  |    1     |     0    | OUTPUT (LOW)              |
-  ---------------------------------------------------
-  |    1     |     1    | OUTPUT (HIGH)             |
-  ---------------------------------------------------
+/*-----------------------------------------
+  |   DDRx   |   PORTx  |    result       |
+  ----------------------------------------|
+  ----------------------------------------|
+  |    0     |     0    |  INPUT          |
+  -----------------------------------------
+  |    0     |     1    |  INPUT_PULLUP   |
+  -----------------------------------------
+  |    1     |     0    | OUTPUT (LOW)    |
+  -----------------------------------------
+  |    1     |     1    | OUTPUT (HIGH)   |
+  -----------------------------------------
 
 
   LOW(0) state of both registers is DEFAULT,
@@ -40,12 +40,9 @@
   That is more efficient since XOR operation is done in hardware, not software,
   and it saves cycles since in code there is no need to bother about XOR.*/
 
-
 #include <avr/power.h>
 #include <avr/sleep.h>
 #include <EEPROM.h>
-
-
 
 #define _nop() __asm__ volatile("nop")
 
@@ -81,12 +78,7 @@ byte _index;  //indicate current cell -- that is always kept in cell 0
 byte EEPROM_save_toggle_port_state(byte value) {
   switch (value) {
     case 255:
-      if (_index < (_max_eeprom_cells - 1)) {
-        _index++;
-      } else {
-        _index = 1;
-      }
-      //_index = _index < (_max_eeprom_cells - 1) ? _index + 1 : 1;
+      _index = _index < (_max_eeprom_cells - 1) ? _index + 1 : 1;
       value = 0;
       break;
     default:
@@ -106,8 +98,6 @@ byte EEPROM_initiate() {
     case _max_eeprom_cells ... 255:
       _index = 1;
       port_state = 0;
-      //EEPROM.update(0, _index);
-      //EEPROM.update(_index, port_state);
       break;
     default:
       port_state = EEPROM.read(_index);
@@ -185,13 +175,11 @@ void swap_ports() {
   PINB = bit(ENABLE_OUT);
 }
 
-
 void _delay_wd() {
   bitSet(WDTCR, WDTIE_WDIE);  // Enable watchdog timer interrupts
   gosleep();
   bitClear(WDTCR, WDTIE_WDIE);  //Disable watchdog timer interrupts
 }
-
 
 void loop() {
   enable_INT0();
