@@ -6,18 +6,18 @@
 //ATtiny 2313 DO NOT work with 128kHz.
 
 
-/*---------------------------------------
-  |   DDRx   |   PORTx  |    result     |
-  ---------------------------------------
-  ---------------------------------------
-  |    0     |     0    |  INPUT        |
-  ---------------------------------------
-  |    0     |     1    |  INPUT_PULLUP |
-  ---------------------------------------
-  |    1     |     0    | OUTPUT (LOW)  |
-  ---------------------------------------
-  |    1     |     1    | OUTPUT (HIGH) |
-  ---------------------------------------
+/*---------------------------------------------------
+  |   DDRx   |   PORTx  |    result                 |
+  --------------------------------------------------|
+  --------------------------------------------------|
+  |    0     |     0    |  INPUT / Tri-state (hi-Z) |
+  ---------------------------------------------------
+  |    0     |     1    |  INPUT_PULLUP             |
+  ---------------------------------------------------
+  |    1     |     0    | OUTPUT (LOW)              |
+  ---------------------------------------------------
+  |    1     |     1    | OUTPUT (HIGH)             |
+  ---------------------------------------------------
 
 
   LOW(0) state of both registers is DEFAULT,
@@ -45,7 +45,8 @@
 #include <avr/sleep.h>
 #include <EEPROM.h>
 
-volatile bool just_wake_up = 1;
+
+
 #define _nop() __asm__ volatile("nop")
 
 #if defined(__AVR_ATtiny13__) || defined(__AVR_ATtiny13A__)
@@ -105,6 +106,8 @@ byte EEPROM_initiate() {
     case _max_eeprom_cells ... 255:
       _index = 1;
       port_state = 0;
+      //EEPROM.update(0, _index);
+      //EEPROM.update(_index, port_state);
       break;
     default:
       port_state = EEPROM.read(_index);
@@ -137,6 +140,20 @@ void setup() {
   _nop();
 
   bitClear(PORTB, ENABLE_OUT);  //set ENABLEOUTPUT to LOW -- LOW enables 4053s
+
+
+  //enable_INT0();
+  set_sleep_mode(SLEEP_MODE_IDLE);
+
+  //WDTCR &= ~(bit(WDP1) | bit(WDP0) | bit(WDP2) | bit(WDP3)); //16ms
+  // WDTCR = (WDTCR & ~(bit(WDP1) |bit(WDP2) | bit(WDP3)   )) | bit(WDP0); //32ms
+  //WDTCR = (WDTCR & ~(bit(WDP0) | bit(WDP2) | bit(WDP3))) | bit(WDP1);  //64
+  WDTCR = (WDTCR & ~(bit(WDP2) | bit(WDP3))) | (bit(WDP0) | bit(WDP1));  //125ms
+  //WDTCR = (WDTCR & ~(bit(WDP0) | bit(WDP1) | bit(WDP3))) | bit(WDP2);  //250ms
+  //WDTCR = (WDTCR & ~(bit(WDP1) | bit(WDP3))) | (bit(WDP0) | bit(WDP2));  //0.5s
+}
+
+void enable_INT0() {
   /*
     The falling edge of INT0 generates an interrupt request
     falling/rising edge allows to wake-up only from IDLE, since it need
@@ -145,30 +162,19 @@ void setup() {
     https://ww1.microchip.com/downloads/en/DeviceDoc/ATtiny13A-Data-Sheet-DS40002307A.pdf
     page 36, table 7-1
   */
-
-  MCUCR &= ~(bit(ISC00) | bit(ISC01));  //The falling edge of INT0 generates an interrupt request.
-
-
-  //  WDTCR |= bit(WDP0);          //32ms
-  //  WDTCR |= bit(WDP1);          //64ms
-  WDTCR |= bit(WDP1) | bit(WDP0);  //125ms
-  //WDTCR |= bit(WDP2);            //250ms
-
-  set_sleep_mode(SLEEP_MODE_IDLE);
-}
-
-void enable_INT0() {
-  //GIFR |= 1 << INTF0;  //purge interrupt flag so that we don't get a spurious interrupt immediately
-  GIMSK |= 1 << INT0;
+  MCUCR = (MCUCR & ~(bit(ISC00))) | bit(ISC01);  //The falling edge of INT0 generates an interrupt request.
+  GIFR = 1 << INTF0;                             //purge interrupt flag so that we don't get a spurious interrupt immediately
+  GIMSK = 1 << INT0;
 }
 
 void disable_INT0() {
+  MCUCR &= ~(bit(ISC00) | bit(ISC01));
   GIMSK = 0;
 }
 
 void gosleep() {
+  sleep_bod_disable();
   sleep_mode();
-  just_wake_up = 1;
 }
 
 void swap_ports() {
@@ -179,21 +185,13 @@ void swap_ports() {
   PINB = bit(ENABLE_OUT);
 }
 
-ISR(WDT_vect) {
-  bitClear(WDTCR, WDTIE_WDIE);  //Disable watchdog timer interrupts
-}
 
 void _delay_wd() {
   bitSet(WDTCR, WDTIE_WDIE);  // Enable watchdog timer interrupts
   gosleep();
+  bitClear(WDTCR, WDTIE_WDIE);  //Disable watchdog timer interrupts
 }
 
-ISR(INT0_vect) {
-  if (just_wake_up) {
-    disable_INT0();
-    just_wake_up = 0;
-  }
-}
 
 void loop() {
   enable_INT0();
@@ -203,7 +201,7 @@ void loop() {
     
     after awaking ports are swapped and loop starts again with sleep
   */
-
+  disable_INT0();
   swap_ports();
   _delay_wd();
 }
