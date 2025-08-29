@@ -66,20 +66,15 @@ enum pins {
 #define WDTIE_WDIE WDIE
 #endif
 
-constexpr byte _max_eeprom_cells_num = E2END + 1; //since byte is a variable type its max is 255
+constexpr byte _max_eeprom_cells_num = E2END;  //since byte is a variable type its max is 255
 
 byte _toggle_port_state;
 byte _index;  //indicate current cell -- that is always kept in cell 0
 
 byte EEPROM_save_toggle_port_state(byte value) {
-  switch (value) {
-    case 255:
-      _index = _index < (_max_eeprom_cells_num - 1) ? _index + 1 : 1;
-      value = 0;
-      break;
-    default:
-      value++;
-      break;
+  value++;
+  if (value == 0) {  //thus before incrementation it was 255
+    _index = _index < _max_eeprom_cells_num ? _index + 1 : 1;
   }
   EEPROM.update(0, _index);
   EEPROM.write(_index, value);
@@ -87,7 +82,7 @@ byte EEPROM_save_toggle_port_state(byte value) {
 }
 
 byte EEPROM_initiate() {
-  _index = EEPROM.read(0) & E2END; //E2END is 63, 127, 255 or 511
+  _index = EEPROM.read(0) & _max_eeprom_cells_num;  //_max_eeprom_cells_num is 63, 127 or 255
   _index = 0 ? 1 : _index;
   return EEPROM.read(_index);
 }
@@ -116,7 +111,6 @@ void setup() {
   _nop();
 
   bitClear(PORTB, ENABLE_OUT);  //set ENABLEOUTPUT to LOW -- LOW enables 4053s
-
 
   //enable_INT0();
   set_sleep_mode(SLEEP_MODE_IDLE);
