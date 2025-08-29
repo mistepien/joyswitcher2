@@ -66,11 +66,7 @@ enum pins {
 #define WDTIE_WDIE WDIE
 #endif
 
-#if defined(__AVR_ATtiny85__)
-constexpr byte _max_eeprom_cells = 255;
-#else
-constexpr byte _max_eeprom_cells = E2END + 1;
-#endif
+constexpr byte _max_eeprom_cells_num = E2END + 1; //since byte is a variable type its max is 255
 
 byte _toggle_port_state;
 byte _index;  //indicate current cell -- that is always kept in cell 0
@@ -78,7 +74,7 @@ byte _index;  //indicate current cell -- that is always kept in cell 0
 byte EEPROM_save_toggle_port_state(byte value) {
   switch (value) {
     case 255:
-      _index = _index < (_max_eeprom_cells - 1) ? _index + 1 : 1;
+      _index = _index < (_max_eeprom_cells_num - 1) ? _index + 1 : 1;
       value = 0;
       break;
     default:
@@ -91,19 +87,9 @@ byte EEPROM_save_toggle_port_state(byte value) {
 }
 
 byte EEPROM_initiate() {
-  _index = EEPROM.read(0);
-  byte port_state;
-  switch (_index) {
-    case 0:
-    case _max_eeprom_cells ... 255:
-      _index = 1;
-      port_state = 0;
-      break;
-    default:
-      port_state = EEPROM.read(_index);
-      break;
-  }
-  return port_state;
+  _index = EEPROM.read(0) & E2END; //E2END is 63, 127, 255 or 511
+  _index = 0 ? 1 : _index;
+  return EEPROM.read(_index);
 }
 
 void setup() {
@@ -122,10 +108,10 @@ void setup() {
 
   //OUTPUT + read EEPROM
   _toggle_port_state = EEPROM_initiate();
-  bitSet(DDRB, TOGGLE_PORT);  //OUTPUT (LOW BY DEFAULT)
   if (_toggle_port_state & 1) {
     bitSet(PORTB, TOGGLE_PORT);
   }
+  bitSet(DDRB, TOGGLE_PORT);  //OUTPUT
 
   _nop();
 
